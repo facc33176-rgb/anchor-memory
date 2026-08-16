@@ -143,8 +143,11 @@ docs/         architecture notes
 
 This project is a heavily modified derivative of
 [Anchor Memory](https://github.com/limen-threshold/anchor-memory),
-originally created by Limen.
+originally created by Limen. The upstream MIT copyright and permission
+notice is preserved in [NOTICE](NOTICE).
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+New downstream material and modifications are licensed under the
+[GNU Affero General Public License v3.0](LICENSE). See [NOTICE](NOTICE)
+for upstream licensing and the repository's earlier MIT-licensed history.
