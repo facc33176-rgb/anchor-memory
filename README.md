@@ -111,11 +111,33 @@ Set through environment variables or a TOML file via `ANCHOR_CONFIG_FILE`:
 | `ANCHOR_REFLEX_ROUTER_V2_MODE` | Optional router-v2 mode (`off`, `shadow`, or `enforce`; default `off`) |
 | `ANCHOR_DAY_COUNTERS` | Optional JSON object of public labels to ISO dates; empty by default |
 | `ANCHOR_TIMEZONE_OFFSET` | UTC offset used by optional local-day features (`0` by default) |
-| `ANCHOR_EMBED_PROVIDER` | Embedding provider (`voyage`, `local`, etc.) |
+| `ANCHOR_EMBED_PROVIDER` | Embedding provider (`voyage`, `siliconflow`, `openai`, `bge`, `local`) |
+| `ANCHOR_EMBEDDING_API_KEY` | Key for `siliconflow` / `openai` embeddings |
+| `ANCHOR_EMBEDDING_URL` / `ANCHOR_EMBEDDING_MODEL` | Override the OpenAI-compatible endpoint and model |
+| `ANCHOR_RERANK_PROVIDER` | Cross-encoder rerank provider (`voyage` by default, or `siliconflow`) |
+| `ANCHOR_RERANK_API_KEY` | Rerank key for `siliconflow` (falls back to `SILICONFLOW_API_KEY`) |
+| `ANCHOR_RERANK_MODEL` / `ANCHOR_RERANK_URL` | Override the rerank model and endpoint |
 | `ANCHOR_TAXONOMY_URL` | OpenAI-compatible taxonomy endpoint |
 | `ANCHOR_TAXONOMY_API_KEY` | Taxonomy provider credential |
 
 Credentials must come from the process environment or an explicit external file; never commit them.
+
+### Using SiliconFlow instead of Voyage
+
+Voyage is hard to reach from mainland China. SiliconFlow (硅基流动) serves the same two jobs
+through OpenAI-compatible APIs: `BAAI/bge-m3` embeddings (1024 dimensions) and the `BAAI/bge-reranker-v2-m3`
+cross-encoder. One key covers both:
+
+```bash
+export ANCHOR_EMBED_PROVIDER=siliconflow
+export ANCHOR_RERANK_PROVIDER=siliconflow
+export SILICONFLOW_API_KEY=...          # or ANCHOR_EMBEDDING_API_KEY / ANCHOR_RERANK_API_KEY separately
+```
+
+See `examples/siliconflow/anchor.env.example`. Switching embedding providers changes the vector space, so
+start a fresh Chroma collection (set `ANCHOR_CHROMA_COLLECTION`) or rebuild projections afterwards.
+
+国内用户：向量和重排都可以换成硅基流动，只需要上面三个环境变量，一个 key 就够。
 
 ## Rebuilding projections
 

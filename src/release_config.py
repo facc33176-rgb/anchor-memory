@@ -25,6 +25,13 @@ def _clean_path(value: str | Path | None) -> Path | None:
     return Path(value).expanduser() if value else None
 
 
+# OpenAI-compatible embedding providers that anchor_memory.OpenAICompatibleEmbedder knows how to call
+_PROVIDER_EMBEDDING_URLS = {
+    "siliconflow": "https://api.siliconflow.cn/v1",
+    "openai": "https://api.openai.com/v1",
+}
+
+
 @dataclass(frozen=True)
 class AnchorConfig:
     data_dir: Path
@@ -77,6 +84,7 @@ class AnchorConfig:
             os.environ.get("ANCHOR_LOG_DIR") or values.get("log_dir")
         ) or (resolved_data / "logs")
 
+        provider = str(os.environ.get("ANCHOR_EMBED_PROVIDER") or os.environ.get("ANCHOR_EMBEDDING_PROVIDER") or values.get("embedding_provider") or "local")
         cfg = cls(
             data_dir=resolved_data,
             db_path=resolved_db,
@@ -84,8 +92,8 @@ class AnchorConfig:
             log_dir=resolved_log,
             created_by=str(os.environ.get("ANCHOR_CREATED_BY") or values.get("created_by") or "local-user"),
             uuid_namespace=str(values.get("uuid_namespace") or "https://anchor-memory.example.invalid"),
-            embedding_provider=str(os.environ.get("ANCHOR_EMBED_PROVIDER") or os.environ.get("ANCHOR_EMBEDDING_PROVIDER") or values.get("embedding_provider") or "local"),
-            embedding_url=str(os.environ.get("ANCHOR_EMBEDDING_URL") or values.get("embedding_url") or "https://api.example.invalid/v1"),
+            embedding_provider=provider,
+            embedding_url=str(os.environ.get("ANCHOR_EMBEDDING_URL") or values.get("embedding_url") or _PROVIDER_EMBEDDING_URLS.get(provider.lower(), "https://api.example.invalid/v1")),
             embedding_api_key=str(os.environ.get("ANCHOR_EMBEDDING_API_KEY") or ""),
             taxonomy_url=str(
                 os.environ.get("ANCHOR_TAXONOMY_URL")

@@ -6,7 +6,8 @@ import os
 import re
 from collections import defaultdict
 from datetime import datetime, timezone
-from pathlib import Path
+
+import rerank_providers
 
 
 POLICIES = {
@@ -43,32 +44,19 @@ def _temporal_label(item: dict) -> str | None:
 
 
 def _voyage_rerank(query, documents):
-    """Use the phase-B reranker contract; fail closed to the RRF scores."""
+    """Use the phase-B reranker contract; fail closed to the RRF scores. Provider: rerank_providers."""
     if not documents:
         return None, "unavailable"
-    key = os.environ.get("VOYAGE_API_KEY", "").strip()
-    key_file = os.environ.get("VOYAGE_KEY_FILE", "").strip()
-    if not key and key_file:
-        secret = Path(key_file).expanduser()
-        if secret.is_file():
-            for line in secret.read_text(encoding="utf-8").splitlines():
-                if line.startswith("VOYAGE_API_KEY="):
-                    key = line.split("=", 1)[1].strip().strip('"').strip("'")
-                    break
-    if not key:
+    req = rerank_providers.request(query, [x[:1200] for x in documents], len(documents))
+    if req is None:
         return None, "unavailable"
     try:
         import httpx
+        url, headers, body = req
         with httpx.Client(timeout=8.0, trust_env=False) as client:
-            response = client.post("https://api.voyageai.com/v1/rerank",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={"model": "rerank-2.5-lite", "query": query,
-                      "documents": [x[:1200] for x in documents], "top_k": len(documents)})
+            response = client.post(url, headers=headers, json=body)
         response.raise_for_status()
-        score_map = {int(x["index"]): float(x["relevance_score"])
-                     for x in response.json().get("data", [])}
-        return [max(0.0, min(1.0, score_map.get(i, 0.0)))
-                for i in range(len(documents))], "ok"
+        return rerank_providers.scores(response.json(), len(documents)), "ok"
     except Exception:
         return None, "failed_fallback"
 
@@ -442,7 +430,7 @@ def recall(memory, query: str, *, budget: int | None = None, allow_empty: bool =
             "total_candidates_scored": len(anchor) + len(theseus),
             "empty_reason": None if main or theseus else "no candidates above threshold",
             "policy": policy, "temporal_mode": temporal_mode, "min_score": min_score,
-            "rerank_model": "rerank-2.5-lite", "rerank_status": rerank_status,
+            "rerank_model": rerank_providers.model_name(), "rerank_status": rerank_status,
             "read_only": {"activation": False, "last_fired": False, "hebbian": False, "review_state": False}}
 
 

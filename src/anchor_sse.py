@@ -24,6 +24,7 @@ _config.ensure_directories()
 DB_PATH = str(_config.data_dir)
 
 mem = AnchorMemory(db_path=DB_PATH)
+print(f"[Anchor] embed_provider={mem._embed_provider} embedder={type(mem._embedder).__name__}", flush=True)
 mem.db._ensure_activation_column()
 _belief_migration = belief_mod.configure(mem.db)
 if _belief_migration.get("imported"):

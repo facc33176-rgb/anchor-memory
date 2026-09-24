@@ -17,6 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 
 import model_routes
+import rerank_providers
 import recall_trace
 try:
     from reflex_router_v2 import (
@@ -1971,50 +1972,21 @@ _REFLEX_ASSOC_FETCH_BUDGET = float(os.environ.get("ANCHOR_REFLEX_ASSOC_FETCH_BUD
 _REFLEX_COOL_BUDGET = float(os.environ.get("ANCHOR_REFLEX_COOL_BUDGET", "0.2"))
 _REFLEX_MAIN_DEADLINE = float(os.environ.get("ANCHOR_REFLEX_MAIN_DEADLINE", "10.5"))
 _REFLEX_ANCHOR_SEARCH_BUDGET = float(os.environ.get("ANCHOR_REFLEX_ANCHOR_SEARCH_BUDGET", "6.0"))
-_VOYAGE_RERANK_MODEL = "rerank-2.5-lite"
-
-
-def _load_voyage_rerank_key() -> str:
-    key = os.environ.get("VOYAGE_API_KEY", "").strip()
-    if key:
-        return key
-    key_path = os.environ.get("VOYAGE_KEY_FILE", "").strip()
-    if not key_path:
-        raise RuntimeError("VOYAGE_API_KEY missing")
-    with open(key_path, encoding="utf-8") as f:
-        for line in f:
-            if line.startswith("VOYAGE_API_KEY="):
-                key = line.split("=", 1)[1].strip().strip('"').strip("'")
-                if key:
-                    return key
-    raise RuntimeError("VOYAGE_API_KEY missing")
-
-
 async def voyage_rerank(query: str, documents: list[str], top_k: int = 12) -> list[float]:
-    """返回与 documents 原顺序对齐的 Voyage relevance_score；失败返回全 0。"""
+    """返回与 documents 原顺序对齐的 relevance_score；失败返回全 0。服务商见 rerank_providers。"""
     if not documents:
         return []
     try:
-        key = _load_voyage_rerank_key()
+        req = rerank_providers.request(query, documents, top_k)
+        if req is None:
+            raise RuntimeError(f"{rerank_providers.provider()} rerank key missing")
+        url, headers, body = req
         async with httpx.AsyncClient(timeout=3.0, trust_env=False) as client:
-            resp = await client.post(
-                "https://api.voyageai.com/v1/rerank",
-                headers={"Authorization": f"Bearer {key}",
-                         "Content-Type": "application/json"},
-                json={"model": _VOYAGE_RERANK_MODEL, "query": query,
-                      "documents": documents, "top_k": top_k},
-            )
+            resp = await client.post(url, headers=headers, json=body)
         resp.raise_for_status()
-        data = resp.json()
-        score_map = {
-            int(item["index"]): float(item["relevance_score"])
-            for item in data.get("data", [])
-            if "index" in item and "relevance_score" in item
-        }
-        return [max(0.0, min(1.0, score_map.get(i, 0.0)))
-                for i in range(len(documents))]
+        return rerank_providers.scores(resp.json(), len(documents))
     except Exception as e:
-        print(f"[反射弧] Voyage rerank失败: {type(e).__name__}: {e}", flush=True)
+        print(f"[反射弧] {rerank_providers.provider()} rerank失败: {type(e).__name__}: {e}", flush=True)
         return [0.0] * len(documents)
 
 
@@ -2873,7 +2845,7 @@ async def _rerank_reflex_search(query: str, context: str, pool: list, limit: int
     """Voyage cross-encoder 主精排；合法判空，cold 仅作独立精确命中 fallback。"""
     if trace is not None:
         trace["limit"] = limit
-        trace["reranker"] = _VOYAGE_RERANK_MODEL
+        trace["reranker"] = rerank_providers.model_name()
     if not route_plan and _is_low_signal_reflex_query(query):
         if trace is not None:
             trace["gate"] = "low_signal"

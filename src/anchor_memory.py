@@ -29,6 +29,48 @@ import recall_v2
 import dual_edge
 
 
+class OpenAICompatibleEmbedder:
+    """Embeddings from any OpenAI-compatible /embeddings endpoint.
+
+    ANCHOR_EMBED_PROVIDER=siliconflow uses SiliconFlow (BAAI/bge-m3, reachable from mainland China),
+    ANCHOR_EMBED_PROVIDER=openai uses OpenAI. ANCHOR_EMBEDDING_URL / ANCHOR_EMBEDDING_MODEL override
+    the defaults; the key comes from ANCHOR_EMBEDDING_API_KEY, else SILICONFLOW_API_KEY / OPENAI_API_KEY.
+    """
+
+    _DEFAULTS = {
+        "siliconflow": ("https://api.siliconflow.cn/v1", "BAAI/bge-m3", "SILICONFLOW_API_KEY"),
+        "openai": ("https://api.openai.com/v1", "text-embedding-3-small", "OPENAI_API_KEY"),
+    }
+
+    def __init__(self, provider: str = "siliconflow"):
+        url, model, key_env = self._DEFAULTS.get(provider, self._DEFAULTS["siliconflow"])
+        self.api_key = (os.environ.get("ANCHOR_EMBEDDING_API_KEY") or os.environ.get(key_env) or "").strip()
+        self.base_url = (os.environ.get("ANCHOR_EMBEDDING_URL") or url).rstrip("/")
+        self.model = os.environ.get("ANCHOR_EMBEDDING_MODEL") or model
+        self.timeout = float(os.environ.get("ANCHOR_EMBEDDING_TIMEOUT", "20"))
+
+    def _embed(self, texts: list[str]) -> np.ndarray:
+        body = json.dumps({"model": self.model, "input": texts}, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/embeddings",
+            data=body,
+            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            data = json.loads(resp.read())["data"]
+        data.sort(key=lambda item: item.get("index", 0))
+        return np.asarray([item["embedding"] for item in data], dtype="float32")
+
+    def encode(self, text):
+        # same contract as the other embedders: one string -> 1-D vector, a list -> 2-D array
+        if isinstance(text, str):
+            return self._embed([text])[0]
+        return self._embed(list(text))
+
+    def encode_query(self, text):
+        return self.encode(text)
+
+
 class DeterministicEmbedder:
     """Offline fallback; keeps the live FTS path usable without model extras."""
 
@@ -266,6 +308,8 @@ class AnchorMemory:
         elif self._embed_provider == "bge":
             from sentence_transformers import SentenceTransformer
             self._embedder = SentenceTransformer(embedding_model)
+        elif self._embed_provider in ("siliconflow", "openai"):
+            self._embedder = OpenAICompatibleEmbedder(self._embed_provider)
         else:
             self._embed_provider = "local"
             self._embedder = DeterministicEmbedder()

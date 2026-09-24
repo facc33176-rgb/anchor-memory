@@ -11,6 +11,17 @@ Earlier revisions of this repository were published under the MIT License.
 The license text accompanying those historical revisions remains part of their
 publication history.
 
+Modifications in this fork
+--------------------------
+
+2026-09, by facc33176-rgb, licensed under AGPL-3.0:
+- SiliconFlow / OpenAI-compatible embedding provider
+  (src/anchor_memory.py: OpenAICompatibleEmbedder; src/release_config.py: per-provider default URL)
+- Selectable cross-encoder rerank provider with SiliconFlow support
+  (src/rerank_providers.py, new; src/gateway.py and src/recall_v2.py now call it)
+- Startup log line naming the active embedder (src/anchor_sse.py)
+- Tests for the above (tests/test_siliconflow_providers.py)
+
 Upstream material
 -----------------
 
